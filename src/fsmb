@@ -4,12 +4,12 @@
 import sys
 import os
 import subprocess
-import re  # Untuk validasi input
+import re
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QRadioButton, QFileDialog, QMessageBox, QTextEdit, QGroupBox, QCheckBox, QTabWidget, QComboBox, QSizePolicy, QSpacerItem
 )
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
-from PyQt5.QtGui import QTextCursor  # Untuk menggulir ke bawah pada QTextEdit
+from PyQt5.QtGui import QTextCursor
 
 # Ensure the script is run as root
 if os.geteuid() != 0:
@@ -19,6 +19,7 @@ if os.geteuid() != 0:
 # Thread for running Nmap
 class NmapThread(QThread):
     output_signal = pyqtSignal(str)  # Signal to send Nmap output
+    finished_signal = pyqtSignal()  # Signal to indicate completion
 
     def __init__(self, nmap_command):
         super().__init__()
@@ -45,6 +46,8 @@ class NmapThread(QThread):
             self.process.wait()
         except Exception as e:
             self.output_signal.emit(f"Error: {str(e)}")
+        finally:
+            self.finished_signal.emit()  # Emit finished signal
 
     def stop(self):
         # Stop Nmap process if running
@@ -56,6 +59,7 @@ class NmapThread(QThread):
 # Thread for running Hydra
 class HydraThread(QThread):
     output_signal = pyqtSignal(str)  # Signal to send Hydra output
+    finished_signal = pyqtSignal()  # Signal to indicate completion
 
     def __init__(self, hydra_command):
         super().__init__()
@@ -82,6 +86,8 @@ class HydraThread(QThread):
             self.process.wait()
         except Exception as e:
             self.output_signal.emit(f"Error: {str(e)}")
+        finally:
+            self.finished_signal.emit()  # Emit finished signal
 
     def stop(self):
         # Stop Hydra process if running
@@ -99,8 +105,9 @@ class HydraBruteForceGUI(QWidget):
         self.setAttribute(Qt.WA_QuitOnClose, True)  # Ensure the app quits on close
 
     def initUI(self):
-        self.setWindowTitle('SMB Brute Force Tool')  # Program title in English
-        self.setFixedSize(800, 600)  # Fixed window size
+        self.setWindowTitle('FSMB (F*ck SMB!)')
+        self.setFixedSize(900, 700)
+        self.setWindowFlags(self.windowFlags() & ~Qt.WindowMaximizeButtonHint)  # Disable maximize button
 
         # Set background color and style
         self.setStyleSheet("""
@@ -116,7 +123,8 @@ class HydraBruteForceGUI(QWidget):
                 color: #ECEFF4;
                 border: 1px solid #81A1C1;
                 padding: 5px;
-                border-radius: 0; /* Square corners */
+                border-radius: 5px;
+                height: 35px;
             }
             QPushButton:hover {
                 background-color: #81A1C1;
@@ -131,11 +139,13 @@ class HydraBruteForceGUI(QWidget):
                 color: #ECEFF4;
                 border: 1px solid #81A1C1;
                 padding: 5px;
-                border-radius: 0; /* Square corners */
+                border-radius: 5px;
+                font-size: 14px;
+                height: 35px;
             }
             QGroupBox {
                 border: 1px solid #81A1C1;
-                border-radius: 0; /* Square corners */
+                border-radius: 5px;
                 margin-top: 10px;
                 padding-top: 15px;
                 font-weight: bold;
@@ -148,7 +158,7 @@ class HydraBruteForceGUI(QWidget):
             QTabWidget::pane {
                 border: 1px solid #81A1C1;
                 padding: 5px;
-                border-radius: 0; /* Square corners */
+                border-radius: 5px;
             }
             QTabBar::tab {
                 background: #4C566A;
@@ -156,7 +166,7 @@ class HydraBruteForceGUI(QWidget):
                 padding: 10px;
                 border: 1px solid #81A1C1;
                 border-bottom-color: #2E3440;
-                border-radius: 0; /* Square corners */
+                border-radius: 5px;
             }
             QTabBar::tab:selected {
                 background: #81A1C1;
@@ -171,6 +181,7 @@ class HydraBruteForceGUI(QWidget):
         self.tab3 = QTabWidget()  # Tab 3: Log Output
         self.tab3_log_nmap = QWidget()  # Sub-tab 1: Nmap Log
         self.tab3_log_hydra = QWidget()  # Sub-tab 2: Hydra Log
+        self.tab3_export_log = QWidget()  # Sub-tab 3: Export Log
         self.tab4 = QWidget()  # Tab 4: About the Program
         self.tabs.addTab(self.tab1, "🔍 SMB Port Scan")
         self.tabs.addTab(self.tab2, "💥 SMB Brute Force")
@@ -191,27 +202,6 @@ class HydraBruteForceGUI(QWidget):
         layout.addWidget(self.tabs)
         self.setLayout(layout)
 
-    def closeEvent(self, event):
-        """Override the close event to remove temporary files."""
-        self.remove_temp_files()  # Call the function to remove temp files
-        event.accept()  # Accept the event to close the application
-
-    def remove_temp_files(self):
-        """Remove temporary files if they exist."""
-        if os.path.exists('temp_users.txt'):
-            os.remove('temp_users.txt')
-        if os.path.exists('temp_passwords.txt'):
-            os.remove('temp_passwords.txt')
-
-    def is_valid_host(self, host):
-        """Check if the host is a valid IP address or hostname."""
-        # Regular expression for validating an IP address
-        ip_pattern = r'^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$'
-        # Regular expression for validating a hostname
-        hostname_pattern = r'^(?!-)[A-Za-z0-9-]{1,63}(?<!-)(\.[A-Za-z]{2,})+$'
-        
-        return re.match(ip_pattern, host) or re.match(hostname_pattern, host)
-
     def setup_tab1(self):
         layout = QVBoxLayout()
 
@@ -223,6 +213,7 @@ class HydraBruteForceGUI(QWidget):
         self.host_label = QLabel('🖥️  Host/Target:')
         self.host_input = QLineEdit(self)
         self.host_input.setPlaceholderText('Enter host or IP address')
+        self.host_input.setFixedHeight(35)
         host_layout.addWidget(self.host_label)
         host_layout.addWidget(self.host_input)
 
@@ -236,7 +227,8 @@ class HydraBruteForceGUI(QWidget):
         # Input SMB Port
         self.port_label = QLabel('SMB Port (default: 445):')
         self.port_input = QLineEdit(self)
-        self.port_input.setPlaceholderText('445')  # Default port
+        self.port_input.setPlaceholderText('445')
+        self.port_input.setFixedHeight(35)
         port_layout.addWidget(self.port_label)
         port_layout.addWidget(self.port_input)
 
@@ -263,7 +255,8 @@ class HydraBruteForceGUI(QWidget):
             'Idle Scan (-sI)',
             'IP Protocol Scan (-sO)'
         ])
-        self.scan_technique_dropdown.setCurrentIndex(0)  # Default: SYN Scan
+        self.scan_technique_dropdown.setCurrentIndex(0)
+        self.scan_technique_dropdown.setFixedHeight(35)
         scan_technique_layout.addWidget(self.scan_technique_label)
         scan_technique_layout.addWidget(self.scan_technique_dropdown)
 
@@ -284,8 +277,9 @@ class HydraBruteForceGUI(QWidget):
             '3 - Normal (Default)',
             '4 - Aggressive (Fast)',
             '5 - Insane (Very Fast)'
-        ])  # Adding descriptions directly in dropdown
-        self.timing_dropdown.setCurrentIndex(3)  # Default: 3
+        ])
+        self.timing_dropdown.setCurrentIndex(3)
+        self.timing_dropdown.setFixedHeight(35)
         timing_layout.addWidget(self.timing_label)
         timing_layout.addWidget(self.timing_dropdown)
 
@@ -298,11 +292,11 @@ class HydraBruteForceGUI(QWidget):
         # Scan Options (Vuln, Version, OS)
         self.scan_options_layout = QHBoxLayout()
         self.nse_checkbox = QCheckBox('Scan Vulnerabilities', self)
-        self.nse_checkbox.setChecked(False)  # Default: off
+        self.nse_checkbox.setChecked(False)
         self.scan_version_checkbox = QCheckBox('Scan Version', self)
-        self.scan_version_checkbox.setChecked(False)  # Default: off
+        self.scan_version_checkbox.setChecked(False)
         self.scan_os_checkbox = QCheckBox('Scan OS', self)
-        self.scan_os_checkbox.setChecked(False)  # Default: off
+        self.scan_os_checkbox.setChecked(False)
         self.scan_options_layout.addWidget(self.nse_checkbox)
         self.scan_options_layout.addWidget(self.scan_version_checkbox)
         self.scan_options_layout.addWidget(self.scan_os_checkbox)
@@ -315,11 +309,13 @@ class HydraBruteForceGUI(QWidget):
         self.button_layout = QHBoxLayout()
         self.cancel_scan_button = QPushButton('❌ Cancel Scan', self)
         self.cancel_scan_button.clicked.connect(self.cancel_nmap_scan)
-        self.cancel_scan_button.setEnabled(False)  # Initially disable cancel button
+        self.cancel_scan_button.setEnabled(False)
+        self.cancel_scan_button.setFixedHeight(35)
         self.scan_button = QPushButton('🚀 Start Scan', self)
         self.scan_button.clicked.connect(self.start_nmap_scan)
-        self.button_layout.addWidget(self.cancel_scan_button)  # Cancel on the left
-        self.button_layout.addWidget(self.scan_button)  # Start on the right
+        self.scan_button.setFixedHeight(35)
+        self.button_layout.addWidget(self.cancel_scan_button)
+        self.button_layout.addWidget(self.scan_button)
         layout.addLayout(self.button_layout)
 
         self.tab1.setLayout(layout)
@@ -335,8 +331,10 @@ class HydraBruteForceGUI(QWidget):
         self.username_single.setChecked(True)
         self.username_input = QLineEdit(self)
         self.username_input.setPlaceholderText('Enter username')
+        self.username_input.setFixedHeight(35)
         self.username_list_button = QPushButton('📂 Select Username List', self)
         self.username_list_button.clicked.connect(self.browse_username_list)
+        self.username_list_button.setFixedHeight(35)
         self.username_layout.addWidget(self.username_single)
         self.username_layout.addWidget(self.username_input)
         self.username_layout.addWidget(self.username_list)
@@ -355,8 +353,10 @@ class HydraBruteForceGUI(QWidget):
         self.password_single.setChecked(True)
         self.password_input = QLineEdit(self)
         self.password_input.setPlaceholderText('Enter password')
+        self.password_input.setFixedHeight(35)
         self.password_list_button = QPushButton('📂 Select Password List', self)
         self.password_list_button.clicked.connect(self.browse_password_list)
+        self.password_list_button.setFixedHeight(35)
         self.password_layout.addWidget(self.password_single)
         self.password_layout.addWidget(self.password_input)
         self.password_layout.addWidget(self.password_list)
@@ -373,8 +373,9 @@ class HydraBruteForceGUI(QWidget):
 
         self.task_label = QLabel('Number of Tasks (1-16):')
         self.task_dropdown = QComboBox(self)
-        self.task_dropdown.addItems([str(i) for i in range(1, 17)])  # Options from 1 to 16
-        self.task_dropdown.setCurrentIndex(0)  # Default: 1
+        self.task_dropdown.addItems([str(i) for i in range(1, 17)])
+        self.task_dropdown.setCurrentIndex(0)
+        self.task_dropdown.setFixedHeight(35)
         task_layout.addWidget(self.task_label)
         task_layout.addWidget(self.task_dropdown)
 
@@ -387,9 +388,9 @@ class HydraBruteForceGUI(QWidget):
         # Additional Options
         self.options_layout = QHBoxLayout()
         self.verbose_checkbox = QCheckBox('Enable Verbose Mode', self)
-        self.verbose_checkbox.setChecked(False)  # Default: non-verbose
+        self.verbose_checkbox.setChecked(False)
         self.stop_on_success_checkbox = QCheckBox('Stop on Success', self)
-        self.stop_on_success_checkbox.setChecked(False)  # Default: off
+        self.stop_on_success_checkbox.setChecked(False)
         self.options_layout.addWidget(self.verbose_checkbox)
         self.options_layout.addWidget(self.stop_on_success_checkbox)
         layout.addLayout(self.options_layout)
@@ -401,11 +402,13 @@ class HydraBruteForceGUI(QWidget):
         self.button_layout = QHBoxLayout()
         self.cancel_button = QPushButton('❌ Cancel Attack', self)
         self.cancel_button.clicked.connect(self.cancel_hydra_brute_force)
-        self.cancel_button.setEnabled(False)  # Initially disable cancel button
+        self.cancel_button.setEnabled(False)
+        self.cancel_button.setFixedHeight(35)
         self.start_button = QPushButton('💥 Start SMB Brute Force', self)
         self.start_button.clicked.connect(self.confirm_start_hydra_brute_force)
-        self.button_layout.addWidget(self.cancel_button)  # Cancel on the left
-        self.button_layout.addWidget(self.start_button)  # Start on the right
+        self.start_button.setFixedHeight(35)
+        self.button_layout.addWidget(self.cancel_button)
+        self.button_layout.addWidget(self.start_button)
         layout.addLayout(self.button_layout)
 
         self.tab2.setLayout(layout)
@@ -420,9 +423,9 @@ class HydraBruteForceGUI(QWidget):
         self.log_nmap_layout = QVBoxLayout()
         self.log_nmap_label = QLabel('Nmap Output:')
         self.log_nmap_output = QTextEdit(self)
-        self.log_nmap_output.setReadOnly(True)  # Only for displaying logs
-        self.log_nmap_output.setMinimumHeight(300)  # Height of log output
-        self.log_nmap_output.setStyleSheet("background-color: #3B4252; color: #ECEFF4;")  # Styling
+        self.log_nmap_output.setReadOnly(True)
+        self.log_nmap_output.setMinimumHeight(300)
+        self.log_nmap_output.setStyleSheet("background-color: #3B4252; color: #ECEFF4;")
         self.log_nmap_layout.addWidget(self.log_nmap_label)
         self.log_nmap_layout.addWidget(self.log_nmap_output)
         self.tab3_log_nmap.setLayout(self.log_nmap_layout)
@@ -432,13 +435,27 @@ class HydraBruteForceGUI(QWidget):
         self.log_hydra_layout = QVBoxLayout()
         self.log_hydra_label = QLabel('Hydra Output:')
         self.log_hydra_output = QTextEdit(self)
-        self.log_hydra_output.setReadOnly(True)  # Only for displaying logs
-        self.log_hydra_output.setMinimumHeight(300)  # Height of log output
-        self.log_hydra_output.setStyleSheet("background-color: #3B4252; color: #ECEFF4;")  # Styling
+        self.log_hydra_output.setReadOnly(True)
+        self.log_hydra_output.setMinimumHeight(300)
+        self.log_hydra_output.setStyleSheet("background-color: #3B4252; color: #ECEFF4;")
         self.log_hydra_layout.addWidget(self.log_hydra_label)
         self.log_hydra_layout.addWidget(self.log_hydra_output)
         self.tab3_log_hydra.setLayout(self.log_hydra_layout)
         self.log_tabs.addTab(self.tab3_log_hydra, "Hydra Log")
+
+        # Sub-tab 3: Export Log to HTML
+        self.tab3_export_log = QWidget()
+        self.export_log_layout = QVBoxLayout()
+        self.export_log_label = QLabel('Export Log to HTML:')
+        self.export_log_label.setStyleSheet('font-size: 16px; font-weight: bold;')
+        self.export_log_button = QPushButton('💾 Export Log to HTML', self)
+        self.export_log_button.clicked.connect(self.export_log_to_html)
+        self.export_log_button.setFixedHeight(40)
+        self.export_log_layout.addWidget(self.export_log_label)
+        self.export_log_layout.addWidget(self.export_log_button)
+        self.export_log_layout.addItem(QSpacerItem(20, 20, QSizePolicy.Minimum, QSizePolicy.Expanding))
+        self.tab3_export_log.setLayout(self.export_log_layout)
+        self.log_tabs.addTab(self.tab3_export_log, "Export Log")
 
         layout.addWidget(self.log_tabs)
         self.tab3.setLayout(layout)
@@ -478,6 +495,21 @@ class HydraBruteForceGUI(QWidget):
         description_label.setWordWrap(True)
         layout.addWidget(description_label)
 
+        # Add a horizontal line to separate content
+        separator = QLabel('<hr>')
+        separator.setStyleSheet('color: #81A1C1;')
+        layout.addWidget(separator)
+
+        # Add creator information
+        creator_info = QLabel(
+            'Created by Rofi (Fixploit03)\n'
+            'GitHub: https://github.com/fixploit03/FSMB\n'
+            'Copyright © 2023 Rofi. All rights reserved.'
+        )
+        creator_info.setStyleSheet('font-size: 12px; color: #81A1C1;')
+        creator_info.setAlignment(Qt.AlignCenter)
+        layout.addWidget(creator_info)
+
         self.tab4.setLayout(layout)
 
     def browse_username_list(self):
@@ -494,7 +526,7 @@ class HydraBruteForceGUI(QWidget):
 
     def start_nmap_scan(self):
         host = self.host_input.text()
-        port = self.port_input.text().strip() or '445'  # Use default port 445 if input is empty
+        port = self.port_input.text().strip() or '445'
 
         # Validate host input
         if not host or not self.is_valid_host(host):
@@ -518,24 +550,24 @@ class HydraBruteForceGUI(QWidget):
         }[scan_technique]
 
         # Get scan timing
-        timing_option = self.timing_dropdown.currentText().split(' - ')[0]  # Take only the number
+        timing_option = self.timing_dropdown.currentText().split(' - ')[0]
 
         # Build Nmap command for SMB port scan
         nmap_command = [
             'nmap',
-            '-T', timing_option,  # Timing scan option
-            scan_option,  # Use selected scan technique
-            '-p', port,  # Use specified port or default to 445
+            '-T', timing_option,
+            scan_option,
+            '-p', port,
             host
         ]
 
         # Add additional options based on checkboxes
         if self.nse_checkbox.isChecked():
-            nmap_command.extend(['--script', 'smb-vuln*'])  # Scan SMB vulnerabilities
+            nmap_command.extend(['--script', 'smb-vuln*'])
         if self.scan_version_checkbox.isChecked():
-            nmap_command.append('-sV')  # Scan version
+            nmap_command.append('-sV')
         if self.scan_os_checkbox.isChecked():
-            nmap_command.append('-O')  # Scan OS
+            nmap_command.append('-O')
 
         # Clear previous log output
         self.log_nmap_output.clear()
@@ -547,7 +579,7 @@ class HydraBruteForceGUI(QWidget):
         # Run Nmap in a separate thread
         self.nmap_thread = NmapThread(nmap_command)
         self.nmap_thread.output_signal.connect(self.update_nmap_output)
-        self.nmap_thread.finished.connect(self.on_nmap_finished)  # When thread finishes
+        self.nmap_thread.finished_signal.connect(self.on_nmap_finished)
         self.nmap_thread.start()
 
     def cancel_nmap_scan(self):
@@ -556,18 +588,26 @@ class HydraBruteForceGUI(QWidget):
             self.nmap_thread.stop()
             self.nmap_thread.quit()
             self.nmap_thread.wait()
-            QMessageBox.information(self, 'Canceled', 'Scan canceled!')
+
+        # Disable buttons after cancellation
+        self.scan_button.setEnabled(True)
+        self.cancel_scan_button.setEnabled(False)
+
+        # Show message box for cancellation
+        QMessageBox.information(self, 'Canceled', 'Scan canceled.')
 
     def on_nmap_finished(self):
         # Enable start button and disable cancel button
         self.scan_button.setEnabled(True)
         self.cancel_scan_button.setEnabled(False)
-        QMessageBox.information(self, 'Finished', 'Scan completed!')
+
+        # Show message box for completion
+        QMessageBox.information(self, 'Finished', 'Scan completed.')
 
     def update_nmap_output(self, text):
         # Add Nmap output to log
         self.log_nmap_output.append(text)
-        self.log_nmap_output.moveCursor(QTextCursor.End)  # Scroll to the bottom
+        self.log_nmap_output.moveCursor(QTextCursor.End)
 
     def confirm_start_hydra_brute_force(self):
         # Confirm before starting brute force
@@ -584,7 +624,7 @@ class HydraBruteForceGUI(QWidget):
 
     def start_hydra_brute_force(self):
         host = self.host_input.text()
-        port = self.port_input.text().strip() or '445'  # Use default port 445 if input is empty
+        port = self.port_input.text().strip() or '445'
 
         # Validate host input
         if not host or not self.is_valid_host(host):
@@ -595,16 +635,15 @@ class HydraBruteForceGUI(QWidget):
         if self.username_single.isChecked():
             username = self.username_input.text()
             if not username:
-                QMessageBox.critical(self, 'Error', 'Username cannot be empty!')
+                QMessageBox.critical(self, 'Error', 'Username cannot be empty! Please enter a username or select a username list.')
                 return
             usernames = [username]
         else:
             username_file = self.username_input.text()
             if not username_file:
-                QMessageBox.critical(self, 'Error', 'Username list file cannot be empty!')
+                QMessageBox.critical(self, 'Error', 'Username list file cannot be empty! Please enter a username or select a username list.')
                 return
             try:
-                # Read file with Latin-1 encoding
                 with open(username_file, 'r', encoding='latin-1') as f:
                     usernames = f.read().splitlines()
             except FileNotFoundError:
@@ -618,16 +657,15 @@ class HydraBruteForceGUI(QWidget):
         if self.password_single.isChecked():
             password = self.password_input.text()
             if not password:
-                QMessageBox.critical(self, 'Error', 'Password cannot be empty!')
+                QMessageBox.critical(self, 'Error', 'Password cannot be empty! Please enter a password or select a password list.')
                 return
             passwords = [password]
         else:
             password_file = self.password_input.text()
             if not password_file:
-                QMessageBox.critical(self, 'Error', 'Password list file cannot be empty!')
+                QMessageBox.critical(self, 'Error', 'Password list file cannot be empty! Please enter a password or select a password list.')
                 return
             try:
-                # Read file with Latin-1 encoding
                 with open(password_file, 'r', encoding='latin-1') as f:
                     passwords = f.read().splitlines()
             except FileNotFoundError:
@@ -646,21 +684,21 @@ class HydraBruteForceGUI(QWidget):
         # Build Hydra command
         hydra_command = [
             'hydra',
-            '-L', 'temp_users.txt',  # Username list
-            '-P', 'temp_passwords.txt',  # Password list
+            '-L', 'temp_users.txt',
+            '-P', 'temp_passwords.txt',
             host,
             'smb',
-            '-s', port,  # SMB port
-            '-t', self.task_dropdown.currentText()  # Number of tasks
+            '-s', port,
+            '-t', self.task_dropdown.currentText()
         ]
 
         # Add verbose option if selected
         if self.verbose_checkbox.isChecked():
-            hydra_command.append('-V')  # Verbose mode option
+            hydra_command.append('-V')
 
         # Add -F option if Stop on Success is enabled
         if self.stop_on_success_checkbox.isChecked():
-            hydra_command.append('-F')  # Stop on success option
+            hydra_command.append('-F')
 
         # Clear previous log output
         self.log_hydra_output.clear()
@@ -672,7 +710,7 @@ class HydraBruteForceGUI(QWidget):
         # Run Hydra in a separate thread
         self.hydra_thread = HydraThread(hydra_command)
         self.hydra_thread.output_signal.connect(self.update_log_output)
-        self.hydra_thread.finished.connect(self.on_hydra_finished)  # When thread finishes
+        self.hydra_thread.finished_signal.connect(self.on_hydra_finished)
         self.hydra_thread.start()
 
     def cancel_hydra_brute_force(self):
@@ -681,18 +719,153 @@ class HydraBruteForceGUI(QWidget):
             self.hydra_thread.stop()
             self.hydra_thread.quit()
             self.hydra_thread.wait()
-            QMessageBox.information(self, 'Canceled', 'Attack canceled!')
+
+        # Disable buttons after cancellation
+        self.start_button.setEnabled(True)
+        self.cancel_button.setEnabled(False)
+
+        # Show message box for cancellation
+        QMessageBox.information(self, 'Canceled', 'Attack canceled.')
 
     def on_hydra_finished(self):
         # Enable start button and disable cancel button
         self.start_button.setEnabled(True)
         self.cancel_button.setEnabled(False)
-        QMessageBox.information(self, 'Finished', 'Brute force attack completed!')
+
+        # Show message box for completion
+        QMessageBox.information(self, 'Finished', 'Brute force attack completed.')
 
     def update_log_output(self, text):
         # Add Hydra output to log
         self.log_hydra_output.append(text)
-        self.log_hydra_output.moveCursor(QTextCursor.End)  # Scroll to the bottom
+        self.log_hydra_output.moveCursor(QTextCursor.End)
+
+    def export_log_to_html(self):
+        # Get data from Tab 1 (Nmap)
+        host = self.host_input.text()
+        port = self.port_input.text().strip() or '445'
+        scan_technique = self.scan_technique_dropdown.currentText()
+        timing = self.timing_dropdown.currentText()
+        nse_checked = self.nse_checkbox.isChecked()
+        version_checked = self.scan_version_checkbox.isChecked()
+        os_checked = self.scan_os_checkbox.isChecked()
+
+        # Get Nmap log
+        nmap_log = self.log_nmap_output.toPlainText()
+
+        # Get Hydra log (if available)
+        hydra_log = self.log_hydra_output.toPlainText() if self.hydra_thread else None
+
+        # Create HTML content
+        html_content = f"""
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>FSMB (F*ck SMB!)</title>
+            <style>
+                body {{
+                    background-color: #2E3440;
+                    color: #ECEFF4;
+                    font-family: Arial, sans-serif;
+                    padding: 20px;
+                }}
+                h1, h2 {{
+                    color: #81A1C1;
+                }}
+                .section {{
+                    margin-bottom: 20px;
+                }}
+                .section h2 {{
+                    border-bottom: 2px solid #81A1C1;
+                    padding-bottom: 5px;
+                }}
+                .log {{
+                    background-color: #3B4252;
+                    padding: 10px;
+                    border-radius: 5px;
+                    white-space: pre-wrap;
+                    font-family: monospace;
+                }}
+                footer {{
+                    margin-top: 30px;
+                    padding-top: 10px;
+                    border-top: 1px solid #81A1C1;
+                    text-align: center;
+                    font-size: 12px;
+                    color: #81A1C1;
+                }}
+            </style>
+        </head>
+        <body>
+            <h1>FSMB (F*ck SMB!)</h1>
+            
+            <div class="section">
+                <h2>Scan Details</h2>
+                <p><strong>Host:</strong> {host}</p>
+                <p><strong>SMB Port:</strong> {port}</p>
+                <p><strong>Scan Technique:</strong> {scan_technique}</p>
+                <p><strong>Timing:</strong> {timing}</p>
+                <p><strong>Vulnerability Scan:</strong> {nse_checked}</p>
+                <p><strong>Version Detection:</strong> {version_checked}</p>
+                <p><strong>OS Detection:</strong> {os_checked}</p>
+            </div>
+
+            <div class="section">
+                <h2>Nmap Scan Results</h2>
+                <div class="log">{nmap_log}</div>
+            </div>
+        """
+
+        # Add Hydra log if available
+        if hydra_log:
+            html_content += f"""
+            <div class="section">
+                <h2>Hydra Brute Force Results</h2>
+                <div class="log">{hydra_log}</div>
+            </div>
+            """
+
+        # Add footer
+        html_content += """
+            <footer>
+                <p>Created by Rofi (Fixploit03)</p>
+                <p>GitHub: https://github.com/fixploit03/FSMB</p>
+                <p>Copyright © 2023 Rofi. All rights reserved.</p>
+            </footer>
+        </body>
+        </html>
+        """
+
+        # Save HTML to file
+        options = QFileDialog.Options()
+        file_name, _ = QFileDialog.getSaveFileName(self, "Save HTML File", "", "HTML Files (*.html);;All Files (*)", options=options)
+        if file_name:
+            try:
+                with open(file_name, 'w', encoding='utf-8') as file:
+                    file.write(html_content)
+                QMessageBox.information(self, 'Success', 'Log exported successfully!')
+            except Exception as e:
+                QMessageBox.critical(self, 'Error', f'Failed to export log: {str(e)}')
+
+    def is_valid_host(self, host):
+        """Check if the host is a valid IP address or hostname."""
+        ip_pattern = r'^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$'
+        hostname_pattern = r'^(?!-)[A-Za-z0-9-]{1,63}(?<!-)(\.[A-Za-z]{2,})+$'
+        return re.match(ip_pattern, host) or re.match(hostname_pattern, host)
+
+    def closeEvent(self, event):
+        """Override the close event to remove temporary files."""
+        self.remove_temp_files()
+        event.accept()
+
+    def remove_temp_files(self):
+        """Remove temporary files if they exist."""
+        if os.path.exists('temp_users.txt'):
+            os.remove('temp_users.txt')
+        if os.path.exists('temp_passwords.txt'):
+            os.remove('temp_passwords.txt')
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)

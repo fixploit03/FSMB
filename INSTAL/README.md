@@ -1,15 +1,5 @@
 # Cara Instal FSMB
 
-## Persyaratan
-
-Sebelum menginstal FSMB, pastikan sistem Anda memiliki:
-
-- Python 3.x  
-- Git
-- Nmap
-- Hydra
-- PyQt5
-
 ## 1. Update Sistem
 
 Pastikan sistem Anda dalam keadaan terbaru dengan menjalankan:  

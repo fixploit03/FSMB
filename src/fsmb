@@ -504,7 +504,7 @@ class HydraBruteForceGUI(QWidget):
         creator_info = QLabel(
             'Created by Rofi (Fixploit03)\n'
             'GitHub: https://github.com/fixploit03/FSMB\n'
-            'Copyright © 2023 Rofi. All rights reserved.'
+            'Copyright © 2025 Rofi. All rights reserved.'
         )
         creator_info.setStyleSheet('font-size: 12px; color: #81A1C1;')
         creator_info.setAlignment(Qt.AlignCenter)
@@ -832,7 +832,7 @@ class HydraBruteForceGUI(QWidget):
             <footer>
                 <p>Created by Rofi (Fixploit03)</p>
                 <p>GitHub: https://github.com/fixploit03/FSMB</p>
-                <p>Copyright © 2023 Rofi. All rights reserved.</p>
+                <p>Copyright © 2025 Rofi. All rights reserved.</p>
             </footer>
         </body>
         </html>

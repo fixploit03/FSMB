@@ -11,7 +11,7 @@ FSMB adalah Sebuah alat berbasis GUI untuk melakukan Brute Force Attack pada pro
 
 ## Cara Instal
 
-Untuk cara instalasi FSMB ada disini ya: [link]()
+Untuk cara instalasi FSMB ada disini ya: [[link](https://github.com/fixploit03/FSMB/blob/main/INSTAL/README.md)](https://github.com/fixploit03/FSMB/blob/main/INSTAL/README.md)
 
 ## Cara Menjalankan
 

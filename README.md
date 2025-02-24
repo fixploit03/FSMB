@@ -9,4 +9,14 @@ FSMB adalah Sebuah alat berbasis GUI untuk melakukan Brute Force Attack pada pro
 - Hydra
 - PyQt5
 
+## Cara Instal
 
+Untuk cara instalasi FSMB ada disini ya: [link]()
+
+## Cara Menjalankan
+
+Untuk menjalankan FSMB ketikkan perintah:
+
+```
+sudo fsmb
+```

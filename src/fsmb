@@ -2,12 +2,17 @@
 # resiko ditanggung pengguna!
 
 import sys
+import os
 import subprocess
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QRadioButton, QFileDialog, QMessageBox, QTextEdit, QGroupBox, QCheckBox, QTabWidget, QComboBox
 )
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 
+# Pastikan script dijalankan sebagai root
+if os.geteuid() != 0:
+    print("Program ini harus dijalankan sebagai root!")
+    sys.exit(1)
 
 # Thread untuk menjalankan Nmap
 class NmapThread(QThread):
